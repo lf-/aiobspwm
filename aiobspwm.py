@@ -1,4 +1,7 @@
 import asyncio
+import os
+import os.path
+import stat
 from typing import List, NamedTuple
 
 
@@ -8,7 +11,7 @@ class XDisplay(NamedTuple):
     screen: int
 
 
-def parse_display(display: str) -> XDisplay:
+def _parse_display(display: str) -> XDisplay:
     """
     Parse a DISPLAY string into its three component pieces
 
@@ -30,6 +33,62 @@ def parse_display(display: str) -> XDisplay:
     else:
         raise ValueError('More than one dot in DISPLAY string')
     return XDisplay(host, display, screen)
+
+
+def _make_socket_path(host: str, display: int, screen: int) -> str:
+    """
+    Attempt to create a path to a bspwm socket.
+
+    No attempts are made to ensure its actual existence.
+
+    The parameters are intentionally identical to the layout of an XDisplay,
+    so you can just unpack one.
+
+    Parameters:
+    host -- hostname
+    display -- display number
+    screen -- screen number
+
+    Example:
+    >>> _make_socket_path(*_parse_display(':0'))
+    '/tmp/bspwm_0_0-socket'
+    """
+    return f'/tmp/bspwm{host}_{display}_{screen}-socket'
+
+
+def _is_socket(path: str) -> bool:
+    """
+    Find if a given path is a socket.
+
+    Parameters:
+    path -- path to check
+
+    Raises:
+    FileNotFoundError if the path doesn't actually exist
+    """
+    mode = os.stat(path).st_mode
+    return stat.S_ISSOCK(mode)
+
+
+def find_socket() -> str:
+    """
+    Try to find the bspwm socket using env variables
+    """
+    if 'BSPWM_SOCKET' in os.environ:
+        # this is unlikely, but try it anyway
+        return os.environ['BSPWM_SOCKET']
+
+    try:
+        # this intentionally uses the unsafe environment access so it blows
+        # up if DISPLAY is unset
+        path = _make_socket_path(*_parse_display(os.environ['DISPLAY']))
+        if _is_socket(path):
+            return path
+        else:
+            raise RuntimeError('Found non-socket file at bspwm socket '
+                               'location')
+    except (FileNotFoundError, KeyError) as e:
+        raise RuntimeError('Failed to find bspwm socket') from e
 
 
 class RWPair(NamedTuple):
@@ -62,7 +121,7 @@ async def call(sock_path: str, method: List[str]) -> str:
     method -- op to call in list form
 
     Example:
-    >>> call('/tmp/bspwm_0_0-socket', 'wm -g'.split(' '))
+    >>> await call('/tmp/bspwm_0_0-socket', 'wm -g'.split(' '))
     'WMLVDS1:oI:OII:fIII:oIV:LM:TT:G'
     """
     async with BspwmConnection(sock_path) as conn:
@@ -81,4 +140,5 @@ class WM:
         sock_path -- socket path to connect to
         """
         self._sock_path = sock_path
+
 
