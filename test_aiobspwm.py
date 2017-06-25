@@ -59,7 +59,7 @@ def test_find_socket(monkeypatch) -> None:
         res += [0] * (10 - len(res))
         return os.stat_result(res)
     monkeypatch.setattr('os.stat', fakestat2)
-    assert aiobspwm.find_socket() == '/tmp/bspwmtest_1_2-socket',
+    assert aiobspwm.find_socket() == '/tmp/bspwmtest_1_2-socket', \
         'success case with DISPLAY'
 
 
@@ -83,3 +83,75 @@ async def test_call(event_loop: asyncio.BaseEventLoop) -> None:
     svr.close()
     await svr.wait_closed()
     assert requests[0] == b'abc\0def\0'
+
+
+# some heavily edited data out of a bspwm dump
+testdata = {
+    'focusedMonitorId': 6291457,
+    'monitors': [
+        {'borderWidth': 1,
+            'desktops': [
+                {
+                    'borderWidth': 1,
+                    'id': 6291459,
+                    'layout': 'monocle',
+                    'name': 'I',
+                    'windowGap': 6
+                },
+                {
+                    'borderWidth': 1,
+                    'id': 6291460,
+                    'layout': 'monocle',
+                    'name': 'II',
+                    'windowGap': 6
+                }
+            ],
+            'focusedDesktopId': 6291460,
+            'id': 6291457,
+            'name': 'LVDS1',
+            'padding': {'bottom': 0, 'left': 0, 'right': 0, 'top': 20},
+            'randrId': 66,
+            'rectangle': {'height': 768, 'width': 1366, 'x': 0, 'y': 0},
+            'stickyCount': 0,
+            'windowGap': 6,
+            'wired': True
+        },
+        {'borderWidth': 1,
+            'desktops': [
+                {
+                    'borderWidth': 1,
+                    'id': 1234,
+                    'layout': 'monocle',
+                    'name': 'test1',
+                    'windowGap': 6
+                }
+            ],
+            'focusedDesktopId': 1234,
+            'id': 12345678,
+            'name': 'monitor2',
+            'padding': {'bottom': 0, 'left': 0, 'right': 0, 'top': 20},
+            'randrId': 67,
+            'rectangle': {'height': 768, 'width': 1366, 'x': 0, 'y': 0},
+            'stickyCount': 0,
+            'windowGap': 6,
+            'wired': True
+        }
+    ],
+    'primaryMonitorId': 6291457,
+    'stackingList': [37748745, 33554441, 23068673, 29360137, 39845897, 31457289]
+}
+
+def test_initial_load():
+    """
+    Test loading a state dump into the WM class
+    """
+    wm = aiobspwm.WM('/dev/null')
+    wm._apply_initial_state(testdata)
+    assert wm.focused_monitor in wm.monitors.values()
+    for idx, monitor in wm.monitors.items():
+        assert monitor.id == idx
+        assert monitor.name in ('LVDS1', 'monitor2')
+        assert monitor.focused_desktop in monitor.desktops.values()
+        for desk_idx, desk in monitor.desktops.items():
+            assert desk.id == desk_idx
+            assert desk.name in ('I', 'II', 'test1')

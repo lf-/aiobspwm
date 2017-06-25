@@ -2,7 +2,7 @@ import asyncio
 import os
 import os.path
 import stat
-from typing import List, NamedTuple
+from typing import Any, Dict, List, NamedTuple
 
 
 class XDisplay(NamedTuple):
@@ -130,6 +130,33 @@ async def call(sock_path: str, method: List[str]) -> str:
         return (await conn.r.read()).decode('utf-8').rstrip('\n')
 
 
+class Desktop:
+    def __init__(self, id, name, **kwargs):
+        self.id = id
+        self.name = name
+        self._extra_props = kwargs
+
+    def __repr__(self):
+        return '<{d.__class__.__name__} {d.name!r}>'.format(d=self)
+
+
+class Monitor:
+    def __init__(self, id: int, name: str, desktops: List[Dict[str, Any]],
+                 focusedDesktopId: int, **kwargs):
+        self.id = id
+        self.name = name
+        self.desktops: Dict[int, Desktop] = {}
+        for desk in desktops:
+            self.desktops[desk['id']] = Desktop(**desk)
+
+        self.focused_desktop = self.desktops[focusedDesktopId]
+        self._extra_props = kwargs
+
+    def __repr__(self):
+        return '<{m.__class__.__name__} {m.name!r}, ' \
+               '{m.desktops})'.format(m=self)
+
+
 class WM:
     """
     Represents the window/desktop state of a window manager at a given socket
@@ -140,5 +167,11 @@ class WM:
         sock_path -- socket path to connect to
         """
         self._sock_path = sock_path
+
+    def _apply_initial_state(self, state: Dict[str, Any]):
+        self.monitors: Dict[int, Monitor] = {}
+        for mon in state['monitors']:
+            self.monitors[mon['id']] = Monitor(**mon)
+        self.focused_monitor = self.monitors[state['focusedMonitorId']]
 
 
