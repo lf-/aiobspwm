@@ -174,12 +174,15 @@ class WM:
     """
     Represents the window/desktop state of a window manager at a given socket
     """
-    def __init__(self, sock_path: str) -> None:
+    def __init__(self, sock_path: str,
+                 evt_hook: Callable[[str], None] = (lambda: None)) -> None:
         """
         Parameters:
         sock_path -- socket path to connect to
+        evt_hook -- hook function to call on all events
         """
         self._sock_path = sock_path
+        self._evt_hook = evt_hook
 
     async def start(self):
         """
@@ -213,6 +216,7 @@ class WM:
         Parameters:
         line -- state change line out of a subscription
         """
+        self._evt_hook(line)
         h_int = functools.partial(int, base=16)
         EVENTS: Dict[str, Tuple[Tuple[type, ...], Callable]] = {
             'desktop_focus': ((h_int, h_int), self._on_desktop_focus),

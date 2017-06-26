@@ -2,6 +2,7 @@ import asyncio
 import os
 import stat
 import tempfile
+import unittest.mock as mock
 
 import aiobspwm
 import pytest
@@ -164,9 +165,11 @@ def test_wm_event():
     TODO: add coverage for unsupported event logging
           (how is that even possible to do anyway??)
     """
-    wm = aiobspwm.WM('/dev/null')
+    evt_hook = mock.MagicMock()
+    wm = aiobspwm.WM('/dev/null', evt_hook=evt_hook)
     wm._apply_initial_state(testdata)
     wm._on_wm_event('desktop_focus 0x00600001 0x00600003')
+    evt_hook.assert_called_once_with('desktop_focus 0x00600001 0x00600003')
     mon_id = 0x00600001
     desk_id = 0x00600003
     assert wm.monitors[mon_id].focused_desktop == \
