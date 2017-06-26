@@ -1,8 +1,19 @@
 import asyncio
+import functools
+import json
+import logging
 import os
 import os.path
 import stat
-from typing import Any, Dict, List, NamedTuple
+from typing import Any, Callable, Dict, List, NamedTuple, Tuple
+
+
+log = logging.getLogger(__name__)
+for handler in log.handlers:
+    if isinstance(handler, logging.NullHandler):
+        break
+else:
+    log.addHandler(logging.NullHandler())
 
 
 class XDisplay(NamedTuple):
@@ -100,10 +111,10 @@ class BspwmConnection:
     """
     An async context manager for managing a connection to bspwm
     """
-    def __init__(self, path):
+    def __init__(self, path: str) -> None:
         self._path = path
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> 'BspwmConnection':
         pair = await asyncio.open_unix_connection(path=self._path)
         self._conn = RWPair(*pair)
         return self._conn
@@ -168,7 +179,54 @@ class WM:
         """
         self._sock_path = sock_path
 
-    def _apply_initial_state(self, state: Dict[str, Any]):
+    async def start(self):
+        """
+        Pull in initial WM state. This must be called before run() is called.
+        """
+        state = json.loads(await call(self._sock_path, 'wm -d'.split(' ')))
+        self._apply_initial_state(state)
+
+    async def run(self):
+        """
+        Subscribe to bspwm events and keep this object updated
+        """
+        async with BspwmConnection(self._sock_path) as conn:
+            conn.w.write(b'subscribe\0monitor\0desktop\0')
+            await conn.w.drain()
+            while True:
+                evt = (await conn.r.read(4096)).decode('utf-8').rstrip('\n')
+                self._on_wm_event(evt)
+
+
+    def _on_desktop_focus(self, mon_id: int, desk_id: int) -> None:
+        self.monitors[mon_id].focused_desktop = self.monitors[mon_id].desktops[desk_id]
+
+    def _on_wm_event(self, line: str) -> None:
+        """
+        Callback for window manager events
+
+        Parameters:
+        line -- state change line out of a subscription
+        """
+        h_int = functools.partial(int, base=16)
+        EVENTS: Dict[str, Tuple[Tuple[type, ...], Callable]] = {
+            'desktop_focus': ((h_int, h_int), self._on_desktop_focus)
+        }
+        evt_type, *evt_args = line.split(' ')
+
+        def unsupported_evt_handler():
+            log.debug('Unsupported event type: %s', evt_type)
+
+        argtypes, func = EVENTS.get(evt_type, ((), unsupported_evt_handler))
+        func(*[ty(x) for ty, x in zip(argtypes, evt_args)])
+
+    def _apply_initial_state(self, state: Dict[str, Any]) -> None:
+        """
+        Take a bspwm dump and apply it to this wm object
+
+        Parameters:
+        state -- state dict out of the `wm -d` command
+        """
         self.monitors: Dict[int, Monitor] = {}
         for mon in state['monitors']:
             self.monitors[mon['id']] = Monitor(**mon)

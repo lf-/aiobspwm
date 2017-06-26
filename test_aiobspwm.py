@@ -155,3 +155,18 @@ def test_initial_load():
         for desk_idx, desk in monitor.desktops.items():
             assert desk.id == desk_idx
             assert desk.name in ('I', 'II', 'test1')
+
+def test_wm_event():
+    """
+    Test incoming window management events
+
+    TODO: add coverage for unsupported event logging
+          (how is that even possible to do anyway??)
+    """
+    wm = aiobspwm.WM('/dev/null')
+    wm._apply_initial_state(testdata)
+    wm._on_wm_event('desktop_focus 0x00600001 0x00600003')
+    mon_id = 0x00600001
+    desk_id = 0x00600003
+    assert wm.monitors[mon_id].focused_desktop == \
+           wm.monitors[mon_id].desktops[desk_id]
