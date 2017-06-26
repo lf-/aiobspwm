@@ -154,6 +154,7 @@ def test_initial_load():
         assert monitor.focused_desktop in monitor.desktops.values()
         for desk_idx, desk in monitor.desktops.items():
             assert desk.id == desk_idx
+            assert desk.layout in ('tiled', 'monocle')
             assert desk.name in ('I', 'II', 'test1')
 
 def test_wm_event():
@@ -170,3 +171,5 @@ def test_wm_event():
     desk_id = 0x00600003
     assert wm.monitors[mon_id].focused_desktop == \
            wm.monitors[mon_id].desktops[desk_id]
+    wm._on_wm_event('desktop_layout 0x00600001 0x00600003 tiled')
+    assert wm.monitors[mon_id].desktops[desk_id].layout == 'tiled'

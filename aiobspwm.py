@@ -142,13 +142,15 @@ async def call(sock_path: str, method: List[str]) -> str:
 
 
 class Desktop:
-    def __init__(self, id, name, **kwargs):
+    def __init__(self, id: int, name: str, layout: str, **kwargs):
         self.id = id
         self.name = name
+        self.layout = layout
         self._extra_props = kwargs
 
     def __repr__(self):
-        return '<{d.__class__.__name__} {d.name!r}>'.format(d=self)
+        return '<{d.__class__.__name__} {d.name!r} ' \
+               '({d.layout})>'.format(d=self)
 
 
 class Monitor:
@@ -201,6 +203,9 @@ class WM:
     def _on_desktop_focus(self, mon_id: int, desk_id: int) -> None:
         self.monitors[mon_id].focused_desktop = self.monitors[mon_id].desktops[desk_id]
 
+    def _on_desktop_layout(self, mon_id: int, desk_id: int, new_layout: str) -> None:
+        self.monitors[mon_id].desktops[desk_id].layout = new_layout
+
     def _on_wm_event(self, line: str) -> None:
         """
         Callback for window manager events
@@ -210,7 +215,8 @@ class WM:
         """
         h_int = functools.partial(int, base=16)
         EVENTS: Dict[str, Tuple[Tuple[type, ...], Callable]] = {
-            'desktop_focus': ((h_int, h_int), self._on_desktop_focus)
+            'desktop_focus': ((h_int, h_int), self._on_desktop_focus),
+            'desktop_layout': ((h_int, h_int, str), self._on_desktop_layout)
         }
         evt_type, *evt_args = line.split(' ')
 
