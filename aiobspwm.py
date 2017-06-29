@@ -5,7 +5,8 @@ import logging
 import os
 import os.path
 import stat
-from typing import Any, Callable, Dict, List, Optional, NamedTuple, Tuple
+from typing import Any, Callable, cast, Dict, List, Optional, \
+                   NamedTuple, Tuple, Union
 
 
 log = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ def _parse_display(display: str) -> XDisplay:
     """
     host, rest = display.split(':')
     disp = rest.split('.')
-    display = int(disp[0])
+    n_display = int(disp[0])
     if len(disp) == 1:
         # no screen part
         screen = 0
@@ -43,7 +44,7 @@ def _parse_display(display: str) -> XDisplay:
         screen = int(disp[1])
     else:
         raise ValueError('More than one dot in DISPLAY string')
-    return XDisplay(host, display, screen)
+    return XDisplay(host, n_display, screen)
 
 
 def _make_socket_path(host: str, display: int, screen: int) -> str:
@@ -114,7 +115,7 @@ class BspwmConnection:
     def __init__(self, path: str) -> None:
         self._path = path
 
-    async def __aenter__(self) -> 'BspwmConnection':
+    async def __aenter__(self) -> RWPair:
         pair = await asyncio.open_unix_connection(path=self._path)
         self._conn = RWPair(*pair)
         return self._conn
@@ -145,20 +146,20 @@ async def call(sock_path: Optional[str], method: List[str]) -> str:
 
 
 class Desktop:
-    def __init__(self, id: int, name: str, layout: str, **kwargs):
+    def __init__(self, id: int, name: str, layout: str, **kwargs) -> None:
         self.id = id
         self.name = name
         self.layout = layout
         self._extra_props = kwargs
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return '<{d.__class__.__name__} {d.name!r} ' \
                '({d.layout})>'.format(d=self)
 
 
 class Monitor:
     def __init__(self, id: int, name: str, desktops: List[Dict[str, Any]],
-                 focusedDesktopId: int, **kwargs):
+                 focusedDesktopId: int, **kwargs) -> None:
         self.id = id
         self.name = name
         self.desktops: Dict[int, Desktop] = {}
@@ -168,7 +169,7 @@ class Monitor:
         self.focused_desktop = self.desktops[focusedDesktopId]
         self._extra_props = kwargs
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return '<{m.__class__.__name__} {m.name!r} ' \
                '{desks})'.format(m=self, desks=tuple(self.desktops.values()))
 
@@ -178,7 +179,7 @@ class WM:
     Represents the window/desktop state of a window manager at a given socket
     """
     def __init__(self, sock_path: Optional[str] = None,
-                 evt_hook: Callable[[str], None] = (lambda: None)) -> None:
+                 evt_hook: Callable[[str], None] = (lambda x: None)) -> None:
         """
         Parameters:
         sock_path -- socket path to connect to
@@ -189,14 +190,14 @@ class WM:
         self._sock_path = sock_path
         self._evt_hook = evt_hook
 
-    async def start(self):
+    async def start(self) -> None:
         """
         Pull in initial WM state. This must be called before run() is called.
         """
         state = json.loads(await call(self._sock_path, 'wm -d'.split(' ')))
         self._apply_initial_state(state)
 
-    async def run(self):
+    async def run(self) -> None:
         """
         Subscribe to bspwm events and keep this object updated
         """
@@ -222,14 +223,14 @@ class WM:
         line -- state change line out of a subscription
         """
         self._evt_hook(line)
-        h_int = functools.partial(int, base=16)
+        h_int = cast(type, functools.partial(int, base=16))
         EVENTS: Dict[str, Tuple[Tuple[type, ...], Callable]] = {
             'desktop_focus': ((h_int, h_int), self._on_desktop_focus),
             'desktop_layout': ((h_int, h_int, str), self._on_desktop_layout)
         }
         evt_type, *evt_args = line.split(' ')
 
-        def unsupported_evt_handler():
+        def unsupported_evt_handler() -> None:
             log.debug('Unsupported event type: %s', evt_type)
 
         argtypes, func = EVENTS.get(evt_type, ((), unsupported_evt_handler))
