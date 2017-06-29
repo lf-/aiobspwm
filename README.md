@@ -11,11 +11,11 @@ This library is type-annotated.
 
 ## Dependencies
 
-- Python 3.6+ (for f-strings and asyncio changes)
+- Python 3.6+ (for `f`-strings and asyncio changes)
 
 ## Usage
 
-For simple use cases, use call() (use await instead of aiorun if
+For simple use cases, use `call()` (use await instead of aiorun if
 you're not in a REPL):
 
 ```python
@@ -40,7 +40,7 @@ To use the continuous updating of WM state:
                                      # so run it in the background
 ```
 
-aiorun() source:
+`aiorun()` source:
 
 ```python
 def aiorun(coro):
