@@ -5,7 +5,7 @@ import logging
 import os
 import os.path
 import stat
-from typing import Any, Callable, Dict, List, NamedTuple, Tuple
+from typing import Any, Callable, Dict, List, Optional, NamedTuple, Tuple
 
 
 log = logging.getLogger(__name__)
@@ -123,18 +123,21 @@ class BspwmConnection:
         self._conn.w.close()
 
 
-async def call(sock_path: str, method: List[str]) -> str:
+async def call(sock_path: Optional[str], method: List[str]) -> str:
     """
     Call a remote operation like "wm -g" to get wm state in report form
 
     Parameters:
-    sock_path -- path to bspwm socket
+    sock_path -- path to bspwm socket. Can be specified as None to find it
+                 automatically
     method -- op to call in list form
 
     Example:
     >>> await call('/tmp/bspwm_0_0-socket', 'wm -g'.split(' '))
     'WMLVDS1:oI:OII:fIII:oIV:LM:TT:G'
     """
+    if not sock_path:
+        sock_path = find_socket()
     async with BspwmConnection(sock_path) as conn:
         conn.w.write(('\0'.join(method)).encode('utf-8') + b'\0')
         await conn.w.drain()
@@ -166,21 +169,23 @@ class Monitor:
         self._extra_props = kwargs
 
     def __repr__(self):
-        return '<{m.__class__.__name__} {m.name!r}, ' \
-               '{m.desktops})'.format(m=self)
+        return '<{m.__class__.__name__} {m.name!r} ' \
+               '{desks})'.format(m=self, desks=tuple(self.desktops.values()))
 
 
 class WM:
     """
     Represents the window/desktop state of a window manager at a given socket
     """
-    def __init__(self, sock_path: str,
+    def __init__(self, sock_path: Optional[str] = None,
                  evt_hook: Callable[[str], None] = (lambda: None)) -> None:
         """
         Parameters:
         sock_path -- socket path to connect to
         evt_hook -- hook function to call on all events
         """
+        if not sock_path:
+            sock_path = find_socket()
         self._sock_path = sock_path
         self._evt_hook = evt_hook
 
