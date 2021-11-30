@@ -189,6 +189,8 @@ class WM:
             sock_path = find_socket()
         self._sock_path = sock_path
         self._evt_hook = evt_hook
+        self.monitors: Dict[int, Monitor] = {}
+        self.focused_monitor: Monitor = None
 
     async def start(self) -> None:
         """
@@ -206,35 +208,41 @@ class WM:
             await conn.w.drain()
             while True:
                 evt = (await conn.r.read(4096)).decode('utf-8').rstrip('\n')
-                self._on_wm_event(evt)
+                for line in evt.split('\n'):
+                    await self._on_wm_event(line)
 
 
-    def _on_desktop_focus(self, mon_id: int, desk_id: int) -> None:
+    async def _on_desktop_focus(self, mon_id: int, desk_id: int) -> None:
         self.monitors[mon_id].focused_desktop = self.monitors[mon_id].desktops[desk_id]
 
-    def _on_desktop_layout(self, mon_id: int, desk_id: int, new_layout: str) -> None:
+    async def _on_desktop_layout(self, mon_id: int, desk_id: int, new_layout: str) -> None:
         self.monitors[mon_id].desktops[desk_id].layout = new_layout
 
-    def _on_wm_event(self, line: str) -> None:
+    async def _on_monitor_geometry(self):
+        await self.start()
+
+    async def _on_wm_event(self, line: str) -> None:
         """
         Callback for window manager events
 
         Parameters:
         line -- state change line out of a subscription
         """
-        self._evt_hook(line)
+        log.debug('wm event: %r', line)
         h_int = cast(type, functools.partial(int, base=16))
         EVENTS: Dict[str, Tuple[Tuple[type, ...], Callable]] = {
             'desktop_focus': ((h_int, h_int), self._on_desktop_focus),
-            'desktop_layout': ((h_int, h_int, str), self._on_desktop_layout)
+            'desktop_layout': ((h_int, h_int, str), self._on_desktop_layout),
+            'monitor_geometry': ((), self._on_monitor_geometry)
         }
         evt_type, *evt_args = line.split(' ')
 
-        def unsupported_evt_handler() -> None:
-            log.debug('Unsupported event type: %s', evt_type)
+        async def unsupported_evt_handler() -> None:
+            log.info('Unsupported event type: %s', evt_type)
 
         argtypes, func = EVENTS.get(evt_type, ((), unsupported_evt_handler))
-        func(*[ty(x) for ty, x in zip(argtypes, evt_args)])
+        await func(*[ty(x) for ty, x in zip(argtypes, evt_args)])
+        self._evt_hook(line)
 
     def _apply_initial_state(self, state: Dict[str, Any]) -> None:
         """
@@ -243,7 +251,6 @@ class WM:
         Parameters:
         state -- state dict out of the `wm -d` command
         """
-        self.monitors: Dict[int, Monitor] = {}
         for mon in state['monitors']:
             self.monitors[mon['id']] = Monitor(**mon)
         self.focused_monitor = self.monitors[state['focusedMonitorId']]
